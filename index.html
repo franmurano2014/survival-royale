@@ -3,196 +3,221 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SURVIVAL ROYALE</title>
+<script src="/socket.io/socket.io.js"></script>
 <style>
-* { box-sizing: border-box; }
 body {
-  margin: 0;
-  background: #101827;
-  color: white;
-  font-family: Arial, sans-serif;
-  text-align: center;
+  margin:0;
+  background:#101827;
+  color:white;
+  font-family:Arial;
+  text-align:center;
 }
-header {
-  padding: 20px;
-  background: #172b45;
-}
-h1 {
-  color: #ffd43b;
-  font-size: 38px;
-  margin: 5px;
-}
-#game {
-  display: block;
-  width: min(95vw, 900px);
-  height: auto;
-  margin: 15px auto;
-  border: 4px solid #ffd43b;
-  background: #8bcf75;
+h1 {color:#ffd43b;font-size:38px}
+button,input {
+  padding:12px;
+  margin:5px;
+  border:0;
+  border-radius:8px;
 }
 button {
-  background: #ffca28;
-  border: 0;
-  border-radius: 8px;
-  padding: 12px 20px;
-  font-weight: bold;
-  cursor: pointer;
-  margin: 5px;
+  background:#ffca28;
+  font-weight:bold;
+  cursor:pointer;
 }
-#info { font-size: 18px; }
+input {width:180px}
+canvas {
+  width:95%;
+  max-width:900px;
+  background:#8bcf75;
+  border:4px solid #ffd43b;
+  margin-top:15px;
+}
+#estado {color:#8ee8ff}
 </style>
 </head>
 <body>
-<header>
-<h1>SURVIVAL ROYALE</h1>
-<p>¡Sobreviví y convertite en el último jugador!</p>
-</header>
 
-<p id="info">Jugadores: 1 | Vida: 100</p>
+<h1>🏆 SURVIVAL ROYALE</h1>
+<p>¡Conectate y sobreviví!</p>
+
+<h3>🌐 MULTIJUGADOR</h3>
+<button onclick="crearSala(false)">Crear partida pública</button>
+<button onclick="crearSala(true)">Crear sala privada</button>
+<br>
+<input id="codigo" placeholder="Código de sala">
+<button onclick="unirse()">Entrar</button>
+<button onclick="buscarSalas()">Ver partidas públicas</button>
+
+<p id="estado">Conectando al servidor...</p>
+<p id="sala"></p>
+<div id="partidas"></div>
+
 <canvas id="game" width="900" height="550"></canvas>
-<button onclick="startGame()">JUGAR</button>
-<button onclick="restart()">REINICIAR</button>
-<p>Controles: WASD o flechas para moverte · Espacio para disparar.</p>
+
+<p>WASD o flechas para moverte.</p>
 
 <script>
+const socket = io();
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-let player, enemies, bullets, playing, score;
+let jugador = {x:450,y:275};
+let otros = new Map();
+let conectado = false;
+let enSala = false;
+let ultimoEnvio = 0;
 
-function restart() {
-  player = {x:450, y:275, size:20, life:100, speed:4};
-  enemies = [];
-  bullets = [];
-  score = 0;
-  playing = false;
-  draw();
-  updateInfo();
-}
-
-function startGame() {
-  restart();
-  playing = true;
-  for(let i=0;i<7;i++) {
-    enemies.push({
-      x:Math.random()*800+40,
-      y:Math.random()*450+40,
-      size:18,
-      life:2
-    });
-  }
-  loop();
-}
-
-const keys = {};
-document.addEventListener("keydown", e => {
-  keys[e.key.toLowerCase()] = true;
-  if(e.code === "Space") shoot();
-});
-document.addEventListener("keyup", e => {
-  keys[e.key.toLowerCase()] = false;
+socket.on("connect", () => {
+  conectado = true;
+  estado("Conectado al servidor.");
 });
 
-function shoot() {
-  if(!playing) return;
-  bullets.push({x:player.x,y:player.y,dx:0,dy:-7});
+socket.on("disconnect", () => {
+  conectado = false;
+  enSala = false;
+  estado("Desconectado del servidor.");
+});
+
+function estado(texto) {
+  document.getElementById("estado").textContent = texto;
 }
 
-function update() {
-  if(keys["w"] || keys["arrowup"]) player.y -= player.speed;
-  if(keys["s"] || keys["arrowdown"]) player.y += player.speed;
-  if(keys["a"] || keys["arrowleft"]) player.x -= player.speed;
-  if(keys["d"] || keys["arrowright"]) player.x += player.speed;
+function crearSala(privada) {
+  if (!conectado) return estado("Esperá a conectarte.");
 
-  player.x = Math.max(20,Math.min(880,player.x));
-  player.y = Math.max(20,Math.min(530,player.y));
+  socket.emit("createRoom", {privateRoom:privada}, respuesta => {
+    if (!respuesta?.ok) return estado("No se pudo crear la sala.");
+    document.getElementById("codigo").value = respuesta.code;
+    estado(privada ? "Sala privada creada." : "Partida pública creada.");
+  });
+}
 
-  bullets.forEach(b => b.y += b.dy);
-  bullets = bullets.filter(b => b.y > 0);
+function unirse() {
+  const codigo = document.getElementById("codigo").value.trim();
+  if (!codigo) return estado("Escribí un código.");
+  if (!conectado) return estado("Esperá a conectarte.");
 
-  enemies.forEach(enemy => {
-    const dx = player.x-enemy.x;
-    const dy = player.y-enemy.y;
-    const dist = Math.hypot(dx,dy);
-    if(dist > 0) {
-      enemy.x += dx/dist*0.8;
-      enemy.y += dy/dist*0.8;
-    }
-    if(dist < 35) player.life -= 0.15;
+  socket.emit("joinRoom", codigo, respuesta => {
+    if (!respuesta?.ok) estado(respuesta?.error || "No se pudo entrar.");
+  });
+}
 
-    bullets.forEach(b => {
-      if(Math.hypot(b.x-enemy.x,b.y-enemy.y)<25) {
-        enemy.life--;
-        b.y = -100;
-        if(enemy.life<=0) score++;
-      }
-    });
+socket.on("roomJoined", datos => {
+  enSala = true;
+  otros.clear();
+
+  datos.players.forEach(p => {
+    if (p.id !== socket.id) otros.set(p.id,p);
   });
 
-  enemies = enemies.filter(e=>e.life>0);
-  bullets = bullets.filter(b=>b.y>-50);
-  updateInfo();
+  document.getElementById("sala").textContent =
+    "Sala: " + datos.code + " | Jugadores: " + datos.players.length + "/20";
 
-  if(player.life<=0) {
-    playing=false;
-    alert("¡Partida terminada! Eliminaciones: "+score);
-  }
-  if(enemies.length===0) {
-    playing=false;
-    alert("¡VICTORIA ROYALE! 🏆");
+  estado("¡Estás dentro de la partida!");
+});
+
+socket.on("playerJoined", p => {
+  otros.set(p.id,p);
+  actualizarJugadores();
+});
+
+socket.on("playerMoved", p => {
+  if (otros.has(p.id)) otros.set(p.id,p);
+});
+
+socket.on("playerLeft", id => {
+  otros.delete(id);
+  actualizarJugadores();
+});
+
+function actualizarJugadores() {
+  document.getElementById("sala").textContent =
+    "Jugadores conectados: " + (otros.size+1) + "/20";
+}
+
+function buscarSalas() {
+  socket.emit("getPublicRooms", salas => {
+    const div = document.getElementById("partidas");
+    div.innerHTML = "<h3>Partidas públicas</h3>";
+
+    if (!salas || salas.length===0) {
+      div.textContent = "No hay partidas públicas disponibles.";
+      return;
+    }
+
+    salas.forEach(s => {
+      const b = document.createElement("button");
+      b.textContent = s.code + " (" + s.players + "/20)";
+      b.onclick = () => {
+        document.getElementById("codigo").value = s.code;
+        unirse();
+      };
+      div.appendChild(b);
+    });
+  });
+}
+
+const teclas = {};
+document.addEventListener("keydown",e => {
+  teclas[e.key.toLowerCase()] = true;
+});
+document.addEventListener("keyup",e => {
+  teclas[e.key.toLowerCase()] = false;
+});
+
+function actualizar() {
+  if (enSala) {
+    if (teclas.w || teclas.arrowup) jugador.y -= 4;
+    if (teclas.s || teclas.arrowdown) jugador.y += 4;
+    if (teclas.a || teclas.arrowleft) jugador.x -= 4;
+    if (teclas.d || teclas.arrowright) jugador.x += 4;
+
+    jugador.x = Math.max(20,Math.min(880,jugador.x));
+    jugador.y = Math.max(20,Math.min(530,jugador.y));
+
+    if (Date.now()-ultimoEnvio>50) {
+      socket.emit("playerMove", {x:jugador.x,y:jugador.y});
+      ultimoEnvio = Date.now();
+    }
   }
 }
 
-function draw() {
+function dibujar() {
   ctx.clearRect(0,0,900,550);
   ctx.fillStyle="#8bcf75";
   ctx.fillRect(0,0,900,550);
 
-  for(let i=0;i<30;i++) {
-    ctx.fillStyle="#70b65d";
-    ctx.beginPath();
-    ctx.arc((i*137)%900,(i*83)%550,15,0,Math.PI*2);
-    ctx.fill();
-  }
-
   ctx.fillStyle="#2878ed";
   ctx.beginPath();
-  ctx.arc(player.x,player.y,player.size,0,Math.PI*2);
+  ctx.arc(jugador.x,jugador.y,20,0,Math.PI*2);
   ctx.fill();
 
-  ctx.fillStyle="#e53935";
-  enemies.forEach(e=>{
-    ctx.beginPath();
-    ctx.arc(e.x,e.y,e.size,0,Math.PI*2);
-    ctx.fill();
-  });
-
-  ctx.fillStyle="#ffeb3b";
-  bullets.forEach(b=>{
-    ctx.fillRect(b.x-4,b.y-8,8,16);
-  });
-
   ctx.fillStyle="white";
-  ctx.font="18px Arial";
-  ctx.fillText("ELIMINACIONES: "+score,15,25);
-}
+  ctx.font="14px Arial";
+  ctx.fillText("VOS",jugador.x-12,jugador.y-28);
 
-function updateInfo() {
-  document.getElementById("info").textContent =
-    "Vida: "+Math.max(0,Math.ceil(player.life))+
-    " | Eliminaciones: "+score+
-    " | Rivales: "+enemies.length;
+  otros.forEach(p => {
+    ctx.fillStyle="#e53935";
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,20,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.fillStyle="white";
+    ctx.fillText("RIVAL",p.x-18,p.y-28);
+  });
 }
 
 function loop() {
-  if(!playing) return;
-  update();
-  draw();
-  if(playing) requestAnimationFrame(loop);
+  actualizar();
+  dibujar();
+  requestAnimationFrame(loop);
 }
 
-restart();
+loop();
 </script>
 </body>
 </html>
+
+
