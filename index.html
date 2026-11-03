@@ -1,0 +1,198 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SURVIVAL ROYALE</title>
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: #101827;
+  color: white;
+  font-family: Arial, sans-serif;
+  text-align: center;
+}
+header {
+  padding: 20px;
+  background: #172b45;
+}
+h1 {
+  color: #ffd43b;
+  font-size: 38px;
+  margin: 5px;
+}
+#game {
+  display: block;
+  width: min(95vw, 900px);
+  height: auto;
+  margin: 15px auto;
+  border: 4px solid #ffd43b;
+  background: #8bcf75;
+}
+button {
+  background: #ffca28;
+  border: 0;
+  border-radius: 8px;
+  padding: 12px 20px;
+  font-weight: bold;
+  cursor: pointer;
+  margin: 5px;
+}
+#info { font-size: 18px; }
+</style>
+</head>
+<body>
+<header>
+<h1>SURVIVAL ROYALE</h1>
+<p>¡Sobreviví y convertite en el último jugador!</p>
+</header>
+
+<p id="info">Jugadores: 1 | Vida: 100</p>
+<canvas id="game" width="900" height="550"></canvas>
+<button onclick="startGame()">JUGAR</button>
+<button onclick="restart()">REINICIAR</button>
+<p>Controles: WASD o flechas para moverte · Espacio para disparar.</p>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+let player, enemies, bullets, playing, score;
+
+function restart() {
+  player = {x:450, y:275, size:20, life:100, speed:4};
+  enemies = [];
+  bullets = [];
+  score = 0;
+  playing = false;
+  draw();
+  updateInfo();
+}
+
+function startGame() {
+  restart();
+  playing = true;
+  for(let i=0;i<7;i++) {
+    enemies.push({
+      x:Math.random()*800+40,
+      y:Math.random()*450+40,
+      size:18,
+      life:2
+    });
+  }
+  loop();
+}
+
+const keys = {};
+document.addEventListener("keydown", e => {
+  keys[e.key.toLowerCase()] = true;
+  if(e.code === "Space") shoot();
+});
+document.addEventListener("keyup", e => {
+  keys[e.key.toLowerCase()] = false;
+});
+
+function shoot() {
+  if(!playing) return;
+  bullets.push({x:player.x,y:player.y,dx:0,dy:-7});
+}
+
+function update() {
+  if(keys["w"] || keys["arrowup"]) player.y -= player.speed;
+  if(keys["s"] || keys["arrowdown"]) player.y += player.speed;
+  if(keys["a"] || keys["arrowleft"]) player.x -= player.speed;
+  if(keys["d"] || keys["arrowright"]) player.x += player.speed;
+
+  player.x = Math.max(20,Math.min(880,player.x));
+  player.y = Math.max(20,Math.min(530,player.y));
+
+  bullets.forEach(b => b.y += b.dy);
+  bullets = bullets.filter(b => b.y > 0);
+
+  enemies.forEach(enemy => {
+    const dx = player.x-enemy.x;
+    const dy = player.y-enemy.y;
+    const dist = Math.hypot(dx,dy);
+    if(dist > 0) {
+      enemy.x += dx/dist*0.8;
+      enemy.y += dy/dist*0.8;
+    }
+    if(dist < 35) player.life -= 0.15;
+
+    bullets.forEach(b => {
+      if(Math.hypot(b.x-enemy.x,b.y-enemy.y)<25) {
+        enemy.life--;
+        b.y = -100;
+        if(enemy.life<=0) score++;
+      }
+    });
+  });
+
+  enemies = enemies.filter(e=>e.life>0);
+  bullets = bullets.filter(b=>b.y>-50);
+  updateInfo();
+
+  if(player.life<=0) {
+    playing=false;
+    alert("¡Partida terminada! Eliminaciones: "+score);
+  }
+  if(enemies.length===0) {
+    playing=false;
+    alert("¡VICTORIA ROYALE! 🏆");
+  }
+}
+
+function draw() {
+  ctx.clearRect(0,0,900,550);
+  ctx.fillStyle="#8bcf75";
+  ctx.fillRect(0,0,900,550);
+
+  for(let i=0;i<30;i++) {
+    ctx.fillStyle="#70b65d";
+    ctx.beginPath();
+    ctx.arc((i*137)%900,(i*83)%550,15,0,Math.PI*2);
+    ctx.fill();
+  }
+
+  ctx.fillStyle="#2878ed";
+  ctx.beginPath();
+  ctx.arc(player.x,player.y,player.size,0,Math.PI*2);
+  ctx.fill();
+
+  ctx.fillStyle="#e53935";
+  enemies.forEach(e=>{
+    ctx.beginPath();
+    ctx.arc(e.x,e.y,e.size,0,Math.PI*2);
+    ctx.fill();
+  });
+
+  ctx.fillStyle="#ffeb3b";
+  bullets.forEach(b=>{
+    ctx.fillRect(b.x-4,b.y-8,8,16);
+  });
+
+  ctx.fillStyle="white";
+  ctx.font="18px Arial";
+  ctx.fillText("ELIMINACIONES: "+score,15,25);
+}
+
+function updateInfo() {
+  document.getElementById("info").textContent =
+    "Vida: "+Math.max(0,Math.ceil(player.life))+
+    " | Eliminaciones: "+score+
+    " | Rivales: "+enemies.length;
+}
+
+function loop() {
+  if(!playing) return;
+  update();
+  draw();
+  if(playing) requestAnimationFrame(loop);
+}
+
+restart();
+</script>
+</body>
+</html>
